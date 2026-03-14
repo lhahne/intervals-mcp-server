@@ -56,7 +56,12 @@ def format_activity_summary(activity: Activity) -> str:
         rpe = activity.icu_rpe
     rpe_str = f"{rpe}/10" if isinstance(rpe, (int, float)) else _fmt(rpe)
 
-    feel_str = f"{activity.feel}/5" if activity.feel is not None else "N/A"
+    _feel_labels = {1: "Great", 2: "Good", 3: "OK", 4: "Bad", 5: "Terrible"}
+    feel_str = (
+        _feel_labels.get(activity.feel, f"Unknown ({activity.feel})")
+        if activity.feel is not None
+        else "N/A"
+    )
 
     return f"""
 Activity: {_fmt(activity.name, "Unnamed")}
