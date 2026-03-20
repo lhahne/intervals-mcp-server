@@ -36,6 +36,11 @@ from intervals_mcp_server.tools.workouts import (
     list_folders,
     list_workouts,
 )
+from intervals_mcp_server.tools.credentials import (
+    clear_intervals_credentials,
+    get_intervals_credentials_status,
+    set_intervals_credentials,
+)
 
 
 def register_tools(mcp_instance: FastMCP) -> None:
@@ -78,4 +83,7 @@ __all__ = [
     "list_workouts",
     "list_folders",
     "create_bulk_workouts",
+    "get_intervals_credentials_status",
+    "set_intervals_credentials",
+    "clear_intervals_credentials",
 ]

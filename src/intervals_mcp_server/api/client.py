@@ -16,6 +16,7 @@ from typing import Any
 import httpx  # pylint: disable=import-error
 from mcp.server.fastmcp import FastMCP  # pylint: disable=import-error
 
+from intervals_mcp_server.auth_bootstrap import ensure_local_auth_repository
 from intervals_mcp_server.config import get_config
 
 logger = logging.getLogger("intervals_icu_mcp_server")
@@ -63,6 +64,7 @@ async def setup_api_client(_app: FastMCP):
         _app (FastMCP): The MCP server application instance.
     """
     try:
+        await ensure_local_auth_repository()
         yield
     finally:
         # Close the module-level httpx_client
@@ -124,7 +126,7 @@ def _prepare_request_config(
             "",
             httpx.BasicAuth("", ""),
             {},
-            "API key is required. Set API_KEY env var or pass api_key",
+            "API key is required. Use set_intervals_credentials for authenticated access or configure API_KEY for local development.",
         )
 
     auth = httpx.BasicAuth("API_KEY", key_to_use)
