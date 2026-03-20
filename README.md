@@ -186,7 +186,7 @@ For local development, you can still run the server without MCP auth and use the
 
    For the authenticated Cloudflare deployment, the server publishes protected resource metadata and uses Google SSO for all tool access.
 
-3. Save the connector and open a new chat. ChatGPT will keep the SSE connection open and POST follow-up requests to the `/messages/` endpoint announced by the server. If you restart the MCP server or tunnel, rerun the SSE command and update the connector URL if it changes.
+3. Save the connector and open a new chat. ChatGPT will send streamable HTTP MCP requests directly to the `/mcp` endpoint you configured. If you restart the MCP server or tunnel, make sure the public URL stays the same, and update the connector URL in ChatGPT if it changes.
 
 ## Development and testing
 

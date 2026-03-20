@@ -18,7 +18,6 @@ def build_google_authorization_url(
     client_id: str,
     redirect_uri: str,
     state: str,
-    nonce: str,
 ) -> str:
     """Build the Google authorization URL."""
     params = {
@@ -27,7 +26,6 @@ def build_google_authorization_url(
         "response_type": "code",
         "scope": "openid email profile",
         "state": state,
-        "nonce": nonce,
         "access_type": "offline",
         "prompt": "consent",
     }

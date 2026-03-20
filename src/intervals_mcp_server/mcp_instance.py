@@ -14,13 +14,15 @@ from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, Re
 
 from intervals_mcp_server.api.client import setup_api_client
 from intervals_mcp_server.auth_provider import provider
+from intervals_mcp_server.config import get_config
 
 
 def _build_auth_settings() -> AuthSettings | None:
+    config = get_config()
+    if not config.auth_enabled:
+        return None
     issuer_url = os.getenv("MCP_ISSUER_URL")
     resource_server_url = os.getenv("MCP_RESOURCE_SERVER_URL")
-    if not issuer_url or not resource_server_url:
-        return None
     return AuthSettings(
         issuer_url=issuer_url,
         resource_server_url=resource_server_url,

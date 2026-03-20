@@ -40,14 +40,13 @@ CREATE TABLE IF NOT EXISTS oauth_sessions (
     code_challenge TEXT NOT NULL,
     scopes_json TEXT NOT NULL,
     resource TEXT,
-    google_nonce TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS oauth_clients (
     client_id TEXT PRIMARY KEY,
-    client_secret_hash TEXT,
+    client_secret_encrypted TEXT,
     metadata_json TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );
@@ -105,7 +104,6 @@ class OAuthSession:
     code_challenge: str
     scopes: list[str]
     resource: str | None
-    google_nonce: str
     expires_at: int
 
 
@@ -138,10 +136,18 @@ class SQLiteAuthRepository:
         self._encryption_secret = encryption_secret
         self._connection = sqlite3.connect(db_path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
+        self._lock = asyncio.Lock()
+
+    async def _run_locked(self, func, *args):
+        async with self._lock:
+            return await asyncio.to_thread(func, *args)
 
     async def initialize(self) -> None:
-        await asyncio.to_thread(self._connection.executescript, SCHEMA_SQL)
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.executescript(SCHEMA_SQL)
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def upsert_user(self, google_subject: str, email: str | None) -> str:
         now = int(time.time())
@@ -161,31 +167,32 @@ class SQLiteAuthRepository:
             self._connection.commit()
             return user_id
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def create_oauth_session(self, session: OAuthSession) -> None:
-        await asyncio.to_thread(
-            self._connection.execute,
-            """
-            INSERT INTO oauth_sessions (
-                state, client_id, redirect_uri, redirect_uri_provided_explicitly,
-                code_challenge, scopes_json, resource, google_nonce, created_at, expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                session.state,
-                session.client_id,
-                session.redirect_uri,
-                int(session.redirect_uri_provided_explicitly),
-                session.code_challenge,
-                json.dumps(session.scopes),
-                session.resource,
-                session.google_nonce,
-                int(time.time()),
-                session.expires_at,
-            ),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute(
+                """
+                INSERT INTO oauth_sessions (
+                    state, client_id, redirect_uri, redirect_uri_provided_explicitly,
+                    code_challenge, scopes_json, resource, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session.state,
+                    session.client_id,
+                    session.redirect_uri,
+                    int(session.redirect_uri_provided_explicitly),
+                    session.code_challenge,
+                    json.dumps(session.scopes),
+                    session.resource,
+                    int(time.time()),
+                    session.expires_at,
+                ),
+            )
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def pop_oauth_session(self, state: str) -> OAuthSession | None:
         def _op() -> OAuthSession | None:
@@ -207,11 +214,10 @@ class SQLiteAuthRepository:
                 code_challenge=row["code_challenge"],
                 scopes=json.loads(row["scopes_json"]),
                 resource=row["resource"],
-                google_nonce=row["google_nonce"],
                 expires_at=row["expires_at"],
             )
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def save_client(self, client: OAuthClientInformationFull) -> None:
         issued_at = int(time.time())
@@ -219,56 +225,62 @@ class SQLiteAuthRepository:
         encrypted_secret = (
             encrypt_secret(self._encryption_secret, client.client_secret) if client.client_secret else None
         )
-        await asyncio.to_thread(
-            self._connection.execute,
-            """
-            INSERT OR REPLACE INTO oauth_clients (client_id, client_secret_hash, metadata_json, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (client.client_id, encrypted_secret, metadata_json, issued_at),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO oauth_clients (client_id, client_secret_encrypted, metadata_json, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (client.client_id, encrypted_secret, metadata_json, issued_at),
+            )
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         def _op() -> OAuthClientInformationFull | None:
             row = self._connection.execute(
-                "SELECT metadata_json, client_secret_hash FROM oauth_clients WHERE client_id = ?",
+                "SELECT metadata_json, client_secret_encrypted FROM oauth_clients WHERE client_id = ?",
                 (client_id,),
             ).fetchone()
             if row is None:
                 return None
             data = json.loads(row["metadata_json"])
             data["client_secret"] = (
-                decrypt_secret(self._encryption_secret, row["client_secret_hash"]) if row["client_secret_hash"] else None
+                decrypt_secret(self._encryption_secret, row["client_secret_encrypted"])
+                if row["client_secret_encrypted"]
+                else None
             )
             client = OAuthClientInformationFull.model_validate(data)
             return client
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def save_authorization_code(self, code: ServerAuthorizationCode) -> None:
-        await asyncio.to_thread(
-            self._connection.execute,
-            """
-            INSERT INTO authorization_codes (
-                code, user_id, client_id, scopes_json, redirect_uri,
-                redirect_uri_provided_explicitly, code_challenge, resource, email, expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                code.code,
-                code.user_id,
-                code.client_id,
-                json.dumps(code.scopes),
-                str(code.redirect_uri),
-                int(code.redirect_uri_provided_explicitly),
-                code.code_challenge,
-                code.resource,
-                code.email,
-                int(code.expires_at),
-            ),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute(
+                """
+                INSERT INTO authorization_codes (
+                    code, user_id, client_id, scopes_json, redirect_uri,
+                    redirect_uri_provided_explicitly, code_challenge, resource, email, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    code.code,
+                    code.user_id,
+                    code.client_id,
+                    json.dumps(code.scopes),
+                    str(code.redirect_uri),
+                    int(code.redirect_uri_provided_explicitly),
+                    code.code_challenge,
+                    code.resource,
+                    code.email,
+                    int(code.expires_at),
+                ),
+            )
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def pop_authorization_code(self, client_id: str, code: str) -> ServerAuthorizationCode | None:
         def _op() -> ServerAuthorizationCode | None:
@@ -295,25 +307,27 @@ class SQLiteAuthRepository:
                 resource=row["resource"],
             )
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def save_access_token(self, token: ServerAccessToken) -> None:
-        await asyncio.to_thread(
-            self._connection.execute,
-            """
-            INSERT OR REPLACE INTO access_tokens (token, user_id, client_id, scopes_json, resource, expires_at, revoked_at)
-            VALUES (?, ?, ?, ?, ?, ?, NULL)
-            """,
-            (
-                token.token,
-                token.user_id,
-                token.client_id,
-                json.dumps(token.scopes),
-                token.resource,
-                token.expires_at,
-            ),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO access_tokens (token, user_id, client_id, scopes_json, resource, expires_at, revoked_at)
+                VALUES (?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    token.token,
+                    token.user_id,
+                    token.client_id,
+                    json.dumps(token.scopes),
+                    token.resource,
+                    token.expires_at,
+                ),
+            )
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def get_access_token(self, token: str) -> ServerAccessToken | None:
         def _op() -> ServerAccessToken | None:
@@ -347,25 +361,27 @@ class SQLiteAuthRepository:
                 intervals_api_key=api_key,
             )
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def save_refresh_token(self, token: ServerRefreshToken) -> None:
-        await asyncio.to_thread(
-            self._connection.execute,
-            """
-            INSERT OR REPLACE INTO refresh_tokens (token, user_id, client_id, scopes_json, resource, expires_at, revoked_at)
-            VALUES (?, ?, ?, ?, ?, ?, NULL)
-            """,
-            (
-                token.token,
-                token.user_id,
-                token.client_id,
-                json.dumps(token.scopes),
-                token.resource,
-                token.expires_at,
-            ),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO refresh_tokens (token, user_id, client_id, scopes_json, resource, expires_at, revoked_at)
+                VALUES (?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    token.token,
+                    token.user_id,
+                    token.client_id,
+                    json.dumps(token.scopes),
+                    token.resource,
+                    token.expires_at,
+                ),
+            )
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def pop_refresh_token(self, client_id: str, token: str) -> ServerRefreshToken | None:
         def _op() -> ServerRefreshToken | None:
@@ -391,33 +407,30 @@ class SQLiteAuthRepository:
                 resource=row["resource"],
             )
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def revoke_token(self, token: str) -> None:
         now = int(time.time())
-        await asyncio.to_thread(
-            self._connection.execute,
-            "UPDATE access_tokens SET revoked_at = ? WHERE token = ?",
-            (now, token),
-        )
-        await asyncio.to_thread(
-            self._connection.execute,
-            "UPDATE refresh_tokens SET revoked_at = ? WHERE token = ?",
-            (now, token),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute("UPDATE access_tokens SET revoked_at = ? WHERE token = ?", (now, token))
+            self._connection.execute("UPDATE refresh_tokens SET revoked_at = ? WHERE token = ?", (now, token))
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def set_intervals_credentials(self, user_id: str, credentials: IntervalsCredentials) -> None:
         encrypted_api_key = encrypt_secret(self._encryption_secret, credentials.api_key)
-        await asyncio.to_thread(
-            self._connection.execute,
-            """
-            INSERT OR REPLACE INTO intervals_credentials (user_id, athlete_id, encrypted_api_key, updated_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (user_id, credentials.athlete_id, encrypted_api_key, int(time.time())),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO intervals_credentials (user_id, athlete_id, encrypted_api_key, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, credentials.athlete_id, encrypted_api_key, int(time.time())),
+            )
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
     async def get_intervals_credentials(self, user_id: str) -> IntervalsCredentials | None:
         def _op() -> IntervalsCredentials | None:
@@ -432,15 +445,14 @@ class SQLiteAuthRepository:
                 api_key=decrypt_secret(self._encryption_secret, row["encrypted_api_key"]),
             )
 
-        return await asyncio.to_thread(_op)
+        return await self._run_locked(_op)
 
     async def clear_intervals_credentials(self, user_id: str) -> None:
-        await asyncio.to_thread(
-            self._connection.execute,
-            "DELETE FROM intervals_credentials WHERE user_id = ?",
-            (user_id,),
-        )
-        await asyncio.to_thread(self._connection.commit)
+        def _op() -> None:
+            self._connection.execute("DELETE FROM intervals_credentials WHERE user_id = ?", (user_id,))
+            self._connection.commit()
+
+        await self._run_locked(_op)
 
 
 def create_sqlite_repository(db_path: str, encryption_secret: str) -> SQLiteAuthRepository:
@@ -497,8 +509,8 @@ class CloudflareD1AuthRepository:
             """
             INSERT INTO oauth_sessions (
                 state, client_id, redirect_uri, redirect_uri_provided_explicitly,
-                code_challenge, scopes_json, resource, google_nonce, created_at, expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                code_challenge, scopes_json, resource, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             session.state,
             session.client_id,
@@ -507,7 +519,6 @@ class CloudflareD1AuthRepository:
             session.code_challenge,
             json.dumps(session.scopes),
             session.resource,
-            session.google_nonce,
             int(time.time()),
             session.expires_at,
         )
@@ -525,7 +536,6 @@ class CloudflareD1AuthRepository:
             code_challenge=row["code_challenge"],
             scopes=json.loads(row["scopes_json"]),
             resource=row["resource"],
-            google_nonce=row["google_nonce"],
             expires_at=row["expires_at"],
         )
 
@@ -535,7 +545,7 @@ class CloudflareD1AuthRepository:
         )
         await self._run(
             """
-            INSERT OR REPLACE INTO oauth_clients (client_id, client_secret_hash, metadata_json, created_at)
+            INSERT OR REPLACE INTO oauth_clients (client_id, client_secret_encrypted, metadata_json, created_at)
             VALUES (?, ?, ?, ?)
             """,
             client.client_id,
@@ -546,14 +556,16 @@ class CloudflareD1AuthRepository:
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         row = await self._fetchone(
-            "SELECT metadata_json, client_secret_hash FROM oauth_clients WHERE client_id = ?",
+            "SELECT metadata_json, client_secret_encrypted FROM oauth_clients WHERE client_id = ?",
             client_id,
         )
         if row is None:
             return None
         data = json.loads(row["metadata_json"])
         data["client_secret"] = (
-            decrypt_secret(self._encryption_secret, row["client_secret_hash"]) if row["client_secret_hash"] else None
+            decrypt_secret(self._encryption_secret, row["client_secret_encrypted"])
+            if row["client_secret_encrypted"]
+            else None
         )
         return OAuthClientInformationFull.model_validate(data)
 

@@ -80,6 +80,7 @@ class Config:
             and os.getenv("MCP_RESOURCE_SERVER_URL")
             and os.getenv("GOOGLE_OAUTH_CLIENT_ID")
             and os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+            and os.getenv("MCP_ENCRYPTION_SECRET")
         )
 
 

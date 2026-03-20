@@ -14,14 +14,13 @@ CREATE TABLE IF NOT EXISTS oauth_sessions (
     code_challenge TEXT NOT NULL,
     scopes_json TEXT NOT NULL,
     resource TEXT,
-    google_nonce TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS oauth_clients (
     client_id TEXT PRIMARY KEY,
-    client_secret_hash TEXT,
+    client_secret_encrypted TEXT,
     metadata_json TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );

@@ -78,7 +78,6 @@ class IntervalsOAuthProvider:
             raise AuthorizeError("invalid_request", "Unsupported resource indicator.")
 
         state = generate_token(24)
-        google_nonce = generate_token(18)
         await repository.create_oauth_session(
             OAuthSession(
                 state=state,
@@ -88,7 +87,6 @@ class IntervalsOAuthProvider:
                 code_challenge=params.code_challenge,
                 scopes=params.scopes or ["mcp"],
                 resource=params.resource or _resource_url(),
-                google_nonce=google_nonce,
                 expires_at=int(time.time()) + AUTH_CODE_TTL_SECONDS,
             )
         )
@@ -96,7 +94,6 @@ class IntervalsOAuthProvider:
             client_id=_required_env("GOOGLE_OAUTH_CLIENT_ID"),
             redirect_uri=_google_callback_url(),
             state=state,
-            nonce=google_nonce,
         )
 
     async def load_authorization_code(
