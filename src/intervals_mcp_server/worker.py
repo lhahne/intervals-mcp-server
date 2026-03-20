@@ -5,14 +5,15 @@ Cloudflare Worker entrypoint for the authenticated streamable HTTP deployment.
 from __future__ import annotations
 
 import os
+from typing import Any
 
-import asgi
-from workers import WorkerEntrypoint
+import asgi  # type: ignore[import-not-found]
+from workers import WorkerEntrypoint  # type: ignore[import-not-found]
 
 from intervals_mcp_server.auth_runtime import set_auth_repository
 from intervals_mcp_server.auth_storage import CloudflareD1AuthRepository
 
-_worker_app = None
+_worker_app: Any = None
 
 
 def _sync_env(env) -> None:

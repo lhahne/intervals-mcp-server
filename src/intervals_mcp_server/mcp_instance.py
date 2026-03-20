@@ -8,7 +8,9 @@ the server module and tool modules without creating cyclic imports.
 from __future__ import annotations
 
 import os
+from typing import cast
 
+from pydantic import AnyHttpUrl
 from mcp.server.fastmcp import FastMCP  # pylint: disable=import-error
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 
@@ -21,12 +23,13 @@ def _build_auth_settings() -> AuthSettings | None:
     config = get_config()
     if not config.auth_enabled:
         return None
-    issuer_url = os.getenv("MCP_ISSUER_URL")
-    resource_server_url = os.getenv("MCP_RESOURCE_SERVER_URL")
+    issuer_url = cast(AnyHttpUrl, os.getenv("MCP_ISSUER_URL"))
+    resource_server_url = cast(AnyHttpUrl, os.getenv("MCP_RESOURCE_SERVER_URL"))
+    service_documentation_url = cast(AnyHttpUrl | None, os.getenv("MCP_SERVICE_DOCUMENTATION_URL"))
     return AuthSettings(
         issuer_url=issuer_url,
         resource_server_url=resource_server_url,
-        service_documentation_url=os.getenv("MCP_SERVICE_DOCUMENTATION_URL"),
+        service_documentation_url=service_documentation_url,
         required_scopes=["mcp"],
         client_registration_options=ClientRegistrationOptions(
             enabled=True,

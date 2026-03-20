@@ -7,10 +7,12 @@ from __future__ import annotations
 import logging
 import os
 import time
+from typing import cast
 from urllib.parse import urlencode
 
 from mcp.server.auth.provider import AuthorizeError, OAuthToken
 from mcp.shared.auth import OAuthClientInformationFull
+from pydantic import AnyUrl
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
@@ -256,7 +258,7 @@ async def handle_google_callback(request: Request) -> Response:
         expires_at=float(int(time.time()) + AUTH_CODE_TTL_SECONDS),
         client_id=session.client_id,
         code_challenge=session.code_challenge,
-        redirect_uri=session.redirect_uri,
+        redirect_uri=cast(AnyUrl, session.redirect_uri),
         redirect_uri_provided_explicitly=session.redirect_uri_provided_explicitly,
         resource=session.resource,
     )
