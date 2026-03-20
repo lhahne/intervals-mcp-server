@@ -9,7 +9,7 @@ import os
 import time
 from urllib.parse import urlencode
 
-from mcp.server.auth.provider import AuthorizeError, OAuthToken, TokenError
+from mcp.server.auth.provider import AuthorizeError, OAuthToken
 from mcp.shared.auth import OAuthClientInformationFull
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
