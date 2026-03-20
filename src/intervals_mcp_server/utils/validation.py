@@ -65,7 +65,7 @@ def resolve_athlete_id(
     if not athlete_id_to_use:
         return (
             "",
-            "Error: No athlete ID provided and no default ATHLETE_ID found in environment variables.",
+            "Error: No athlete ID is configured for this request. Set your credentials with set_intervals_credentials or configure ATHLETE_ID for local development.",
         )
     return athlete_id_to_use, None
 

@@ -1,6 +1,6 @@
 # Intervals.icu MCP Server
 
-Model Context Protocol (MCP) server for connecting Claude and ChatGPT with the Intervals.icu API. It provides tools for authentication and data retrieval for activities, events, and wellness data.
+Model Context Protocol (MCP) server for connecting Claude and ChatGPT with the Intervals.icu API. It supports MCP OAuth authentication with Google SSO and per-user Intervals.icu credentials stored in D1 for Cloudflare Worker deployments, while still allowing local `.env`-based development.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ Make a copy of `.env.example` and name it `.env` by running the following comman
 cp .env.example .env
 ```
 
-Then edit the `.env` file and set your Intervals.icu athlete id and API key:
+Then edit the `.env` file and set your Intervals.icu athlete id and API key for local development:
 
 ```
 API_KEY=your_intervals_api_key_here
@@ -168,25 +168,25 @@ Once the server is running and Claude Desktop is configured, you can use the fol
 
 ## Usage with ChatGPT
 
-ChatGPT’s beta MCP connectors can also talk to this server over the SSE transport.
+For local development, you can still run the server without MCP auth and use the local `.env` credentials.
 
-1. Start the server in SSE mode so it exposes the `/sse` and `/messages/` endpoints:
+1. Start the server in streamable HTTP mode so it exposes the `/mcp` endpoint:
 
    ```bash
-   export FASTMCP_HOST=127.0.0.1 FASTMCP_PORT=8765 MCP_TRANSPORT=sse FASTMCP_LOG_LEVEL=INFO
+   export FASTMCP_HOST=127.0.0.1 FASTMCP_PORT=8765 MCP_TRANSPORT=streamable-http FASTMCP_LOG_LEVEL=INFO
    python src/intervals_mcp_server/server.py
    ```
 
-   The startup log prints the full URLs (for example `http://127.0.0.1:8765/sse`). ChatGPT needs that public URL, so forward the port with a tool such as `ngrok http 8765` if you are not exposing the server directly.
+   The startup log prints the full URL (for example `http://127.0.0.1:8765/mcp`). ChatGPT needs that public URL, so forward the port with a tool such as `ngrok http 8765` if you are not exposing the server directly.
 
 2. In ChatGPT, open **Settings → Features → Custom MCP Connectors** and click **Add**. Fill in:
    - **Name**: `Intervals.icu`
-   - **MCP Server URL**: `https://<your-public-host>/sse`
-   - **Authentication**: leave as *No authentication* unless you have protected your tunnel.
+   - **MCP Server URL**: `https://<your-public-host>/mcp`
+   - **Authentication**: choose OAuth if you have deployed the Cloudflare Worker auth flow; otherwise local development can remain unauthenticated.
 
-   You can reuse the same `ngrok http 8765` tunnel URL here; just ensure it forwards to the host/port you exported above.
+   For the authenticated Cloudflare deployment, the server publishes protected resource metadata and uses Google SSO for all tool access.
 
-3. Save the connector and open a new chat. ChatGPT will keep the SSE connection open and POST follow-up requests to the `/messages/` endpoint announced by the server. If you restart the MCP server or tunnel, rerun the SSE command and update the connector URL if it changes.
+3. Save the connector and open a new chat. ChatGPT will send streamable HTTP MCP requests directly to the `/mcp` endpoint you configured. If you restart the MCP server or tunnel, make sure the public URL stays the same, and update the connector URL in ChatGPT if it changes.
 
 ## Development and testing
 
@@ -204,6 +204,33 @@ To start the server manually (useful when developing or testing), run:
 ```bash
 mcp run src/intervals_mcp_server/server.py
 ```
+
+## Cloudflare Workers deployment
+
+The authenticated deployment path uses:
+
+- `src/intervals_mcp_server/worker.py` as the Worker entrypoint
+- D1 for OAuth state, tokens, and per-user Intervals.icu credentials
+- Google OAuth for MCP sign-in
+- MCP streamable HTTP transport only
+
+Required Worker bindings / secrets:
+
+- `DB`
+- `MCP_ISSUER_URL`
+- `MCP_RESOURCE_SERVER_URL`
+- `MCP_GOOGLE_CALLBACK_URL`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+- `MCP_ENCRYPTION_SECRET`
+
+Initialize the D1 schema with `cloudflare/schema.sql`.
+
+After a user signs in with Google, they must configure their own Intervals.icu credentials through these MCP tools:
+
+- `get_intervals_credentials_status`
+- `set_intervals_credentials`
+- `clear_intervals_credentials`
 
 ## License
 

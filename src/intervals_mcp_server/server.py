@@ -63,6 +63,7 @@ from intervals_mcp_server.api.client import (
 )
 from intervals_mcp_server.config import get_config
 from intervals_mcp_server.mcp_instance import mcp
+from intervals_mcp_server.auth_routes import google_oauth_callback  # noqa: F401
 
 # Import types and validation
 from intervals_mcp_server.server_setup import setup_transport, start_server
@@ -124,6 +125,11 @@ from intervals_mcp_server.tools.seasons import (  # pylint: disable=wrong-import
     list_seasons,
     update_season,
 )
+from intervals_mcp_server.tools.credentials import (  # pylint: disable=wrong-import-position  # noqa: E402
+    clear_intervals_credentials,
+    get_intervals_credentials_status,
+    set_intervals_credentials,
+)
 
 # Re-export make_intervals_request and httpx_client for backward compatibility
 # pylint: disable=duplicate-code  # This __all__ list is intentionally similar to tools/__init__.py
@@ -159,6 +165,9 @@ __all__ = [
     "list_seasons",
     "create_season",
     "update_season",
+    "get_intervals_credentials_status",
+    "set_intervals_credentials",
+    "clear_intervals_credentials",
 ]
 
 
