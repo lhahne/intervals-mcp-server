@@ -1,0 +1,16 @@
+name = "intervals-mcp-ts"
+main = "src/index.ts"
+compatibility_date = "2026-03-20"
+workers_dev = true
+
+[vars]
+INTERVALS_API_BASE_URL = "https://intervals.icu/api/v1"
+MCP_ISSUER_URL = "https://example.com"
+MCP_RESOURCE_SERVER_URL = "https://example.com/mcp"
+MCP_GOOGLE_CALLBACK_URL = "https://example.com/oauth/google/callback"
+MCP_SERVICE_DOCUMENTATION_URL = "https://github.com/nikosalonen/intervals-mcp-server"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "intervals-mcp"
+database_id = "replace-me"
