@@ -399,7 +399,16 @@ export function registerTools(server: McpServer, env: RequestContext["env"], rep
     },
     async ({ name, item_type, athlete_id, api_key, description, content, visibility }, extra) => {
       const athleteId = resolveAthleteIdForRequest(env, extra, athlete_id);
-      const parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+      let parsedContent: unknown;
+      if (typeof content === "string") {
+        try {
+          parsedContent = JSON.parse(content);
+        } catch {
+          return textResult("Error: content must be valid JSON.");
+        }
+      } else {
+        parsedContent = content;
+      }
       const result = await makeIntervalsRequest(ctx(env, extra), `/athlete/${athleteId}/custom-item`, {
         apiKey: api_key,
         method: "POST",
@@ -423,7 +432,16 @@ export function registerTools(server: McpServer, env: RequestContext["env"], rep
     },
     async ({ item_id, athlete_id, api_key, name, item_type, description, content, visibility }, extra) => {
       const athleteId = resolveAthleteIdForRequest(env, extra, athlete_id);
-      const parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+      let parsedContent: unknown;
+      if (typeof content === "string") {
+        try {
+          parsedContent = JSON.parse(content);
+        } catch {
+          return textResult("Error: content must be valid JSON.");
+        }
+      } else {
+        parsedContent = content;
+      }
       const result = await makeIntervalsRequest(ctx(env, extra), `/athlete/${athleteId}/custom-item/${item_id}`, {
         apiKey: api_key,
         method: "PUT",
@@ -726,22 +744,24 @@ export function registerTools(server: McpServer, env: RequestContext["env"], rep
     "set_intervals_credentials",
     {
       description: "Store or update the authenticated user's Intervals.icu credentials.",
-      inputSchema: { athlete_id: z.string(), api_key: z.string() },
+      inputSchema: { athlete_id: z.string().trim().min(1), api_key: z.string() },
     },
     async ({ athlete_id, api_key }, extra) => {
       const credentials = withResolvedCredentials(env, extra);
       if (!credentials.userId) {
         return textResult("Credential management requires authenticated MCP access.");
       }
-      validateAthleteId(athlete_id);
-      if (!api_key.trim()) {
+      const trimmedAthleteId = athlete_id.trim();
+      validateAthleteId(trimmedAthleteId);
+      const trimmedApiKey = api_key.trim();
+      if (!trimmedApiKey) {
         return textResult("Error: api_key must not be empty.");
       }
       await repositoryFactory().setIntervalsCredentials(credentials.userId, {
-        athleteId: athlete_id,
-        apiKey: api_key.trim(),
+        athleteId: trimmedAthleteId,
+        apiKey: trimmedApiKey,
       });
-      return textResult(`Saved Intervals.icu credentials for athlete ${athlete_id}.`);
+      return textResult(`Saved Intervals.icu credentials for athlete ${trimmedAthleteId}.`);
     },
   );
 

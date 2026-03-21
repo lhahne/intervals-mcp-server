@@ -36,7 +36,8 @@ export function validateDate(date: string): string {
 }
 
 export function validateAthleteId(athleteId: string): void {
-  if (athleteId && !/^i?\d+$/.test(athleteId)) {
+  const trimmed = athleteId.trim();
+  if (!trimmed || !/^i?\d+$/.test(trimmed)) {
     throw new Error(
       "ATHLETE_ID must be all digits (e.g. 123456) or start with 'i' followed by digits (e.g. i123456)",
     );

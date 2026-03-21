@@ -257,7 +257,6 @@ export async function handleOAuthRoute(env: Env, request: Request): Promise<Resp
       if (challenge !== authorizationCode.codeChallenge) {
         return badRequest("Invalid code_verifier.");
       }
-      const storedCredentials = await repository.getIntervalsCredentials(authorizationCode.userId);
       const accessToken = generateToken(32);
       const refreshToken = generateToken(32);
       await repository.saveAccessToken({
@@ -268,8 +267,6 @@ export async function handleOAuthRoute(env: Env, request: Request): Promise<Resp
         resource: authorizationCode.resource,
         expiresAt: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS,
         email: authorizationCode.email,
-        intervalsAthleteId: storedCredentials?.athleteId,
-        intervalsApiKey: storedCredentials?.apiKey,
       });
       await repository.saveRefreshToken({
         token: refreshToken,
@@ -298,7 +295,6 @@ export async function handleOAuthRoute(env: Env, request: Request): Promise<Resp
       }
       const accessToken = generateToken(32);
       const newRefreshToken = generateToken(32);
-      const storedCredentials = await repository.getIntervalsCredentials(stored.userId);
       await repository.saveAccessToken({
         token: accessToken,
         userId: stored.userId,
@@ -306,8 +302,6 @@ export async function handleOAuthRoute(env: Env, request: Request): Promise<Resp
         scopes: stored.scopes,
         resource: stored.resource,
         expiresAt: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS,
-        intervalsAthleteId: storedCredentials?.athleteId,
-        intervalsApiKey: storedCredentials?.apiKey,
       });
       await repository.saveRefreshToken({
         token: newRefreshToken,

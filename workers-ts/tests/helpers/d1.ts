@@ -224,10 +224,25 @@ export class MockD1Database {
       const row = this.tables.authorization_codes.get(String(values[0]));
       return row && row.client_id === values[1] ? cloneRow(row) : null;
     }
-    if (normalized === "SELECT scopes_json, revoked_at, expires_at FROM access_tokens WHERE token = ?1") {
-      return cloneRow(this.tables.access_tokens.get(String(values[0])) ?? undefined);
+    if (normalized === "SELECT at.token, at.user_id, at.client_id, at.scopes_json, at.resource, at.expires_at, u.email, u.google_subject, ic.athlete_id, ic.encrypted_api_key FROM access_tokens at LEFT JOIN users u ON at.user_id = u.id LEFT JOIN intervals_credentials ic ON at.user_id = ic.user_id WHERE at.token = ?1 AND at.revoked_at IS NULL") {
+      const tokenRow = this.tables.access_tokens.get(String(values[0]));
+      if (!tokenRow || tokenRow.revoked_at !== null) return null;
+      const userRow = this.tables.users.get(String(tokenRow.user_id)) ?? {};
+      const credRow = this.tables.intervals_credentials.get(String(tokenRow.user_id)) ?? {};
+      return {
+        token: tokenRow.token,
+        user_id: tokenRow.user_id,
+        client_id: tokenRow.client_id,
+        scopes_json: tokenRow.scopes_json,
+        resource: tokenRow.resource,
+        expires_at: tokenRow.expires_at,
+        email: userRow.email ?? null,
+        google_subject: (userRow.google_subject ?? null) as unknown,
+        athlete_id: (credRow.athlete_id ?? null) as unknown,
+        encrypted_api_key: (credRow.encrypted_api_key ?? null) as unknown,
+      } as Row;
     }
-    if (normalized === "SELECT scopes_json, revoked_at, expires_at FROM refresh_tokens WHERE token = ?1 AND client_id = ?2") {
+    if (normalized === "SELECT token, user_id, client_id, scopes_json, resource, expires_at, revoked_at FROM refresh_tokens WHERE token = ?1 AND client_id = ?2") {
       const row = this.tables.refresh_tokens.get(String(values[0]));
       return row && row.client_id === values[1] ? cloneRow(row) : null;
     }
