@@ -82,8 +82,6 @@ describe("D1AuthRepository", () => {
       scopes: ["mcp"],
       resource: "https://mcp.test/mcp",
       expiresAt: Math.floor(Date.now() / 1000) + 60,
-      intervalsAthleteId: "i123",
-      intervalsApiKey: "api-key",
     });
     await repository.saveRefreshToken({
       token: "refresh-1",

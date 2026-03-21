@@ -176,20 +176,41 @@ export class D1AuthRepository {
          (token, user_id, client_id, scopes_json, resource, expires_at, revoked_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)`,
       )
-      .bind(token.token, token.userId, token.clientId, JSON.stringify(token), token.resource ?? null, token.expiresAt)
+      .bind(token.token, token.userId, token.clientId, JSON.stringify(token.scopes), token.resource ?? null, token.expiresAt)
       .run();
   }
 
   async getAccessToken(token: string): Promise<AccessTokenRecord | null> {
-    const row = await this.db.prepare("SELECT scopes_json, revoked_at, expires_at FROM access_tokens WHERE token = ?1").bind(token).first<Row>();
-    if (!row || row.revoked_at) {
+    const row = await this.db
+      .prepare(
+        `SELECT at.token, at.user_id, at.client_id, at.scopes_json, at.resource, at.expires_at,
+                u.email, u.google_subject, ic.athlete_id, ic.encrypted_api_key
+         FROM access_tokens at
+         LEFT JOIN users u ON at.user_id = u.id
+         LEFT JOIN intervals_credentials ic ON at.user_id = ic.user_id
+         WHERE at.token = ?1 AND at.revoked_at IS NULL`,
+      )
+      .bind(token)
+      .first<Row>();
+    if (!row || Number(row.expires_at) < nowEpochSeconds()) {
       return null;
     }
-    const record = rowToJson<AccessTokenRecord>(row, "scopes_json");
-    if (!record || record.expiresAt < nowEpochSeconds()) {
-      return null;
-    }
-    return record;
+    const scopes = JSON.parse(String(row.scopes_json)) as string[];
+    const decryptedApiKey = row.encrypted_api_key
+      ? await decryptSecret(this.encryptionSecret, String(row.encrypted_api_key))
+      : null;
+    return {
+      token: String(row.token),
+      userId: String(row.user_id),
+      clientId: String(row.client_id),
+      scopes,
+      resource: row.resource ? String(row.resource) : null,
+      expiresAt: Number(row.expires_at),
+      email: row.email ? String(row.email) : null,
+      googleSubject: row.google_subject ? String(row.google_subject) : null,
+      intervalsAthleteId: row.athlete_id ? String(row.athlete_id) : null,
+      intervalsApiKey: decryptedApiKey,
+    };
   }
 
   async saveRefreshToken(token: RefreshTokenRecord): Promise<void> {
@@ -199,21 +220,33 @@ export class D1AuthRepository {
          (token, user_id, client_id, scopes_json, resource, expires_at, revoked_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)`,
       )
-      .bind(token.token, token.userId, token.clientId, JSON.stringify(token), token.resource ?? null, token.expiresAt)
+      .bind(token.token, token.userId, token.clientId, JSON.stringify(token.scopes), token.resource ?? null, token.expiresAt)
       .run();
   }
 
   async popRefreshToken(clientId: string, token: string): Promise<RefreshTokenRecord | null> {
-    const row = await this.db.prepare("SELECT scopes_json, revoked_at, expires_at FROM refresh_tokens WHERE token = ?1 AND client_id = ?2").bind(token, clientId).first<Row>();
+    const row = await this.db
+      .prepare(
+        "SELECT token, user_id, client_id, scopes_json, resource, expires_at, revoked_at FROM refresh_tokens WHERE token = ?1 AND client_id = ?2",
+      )
+      .bind(token, clientId)
+      .first<Row>();
     if (!row || row.revoked_at) {
       return null;
     }
     await this.db.prepare("DELETE FROM refresh_tokens WHERE token = ?1").bind(token).run();
-    const record = rowToJson<RefreshTokenRecord>(row, "scopes_json");
-    if (!record || record.expiresAt < nowEpochSeconds()) {
+    if (Number(row.expires_at) < nowEpochSeconds()) {
       return null;
     }
-    return record;
+    const scopes = JSON.parse(String(row.scopes_json)) as string[];
+    return {
+      token: String(row.token),
+      userId: String(row.user_id),
+      clientId: String(row.client_id),
+      scopes,
+      resource: row.resource ? String(row.resource) : null,
+      expiresAt: Number(row.expires_at),
+    };
   }
 
   async revokeToken(token: string): Promise<void> {
